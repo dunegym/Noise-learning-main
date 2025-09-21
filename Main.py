@@ -332,6 +332,7 @@ def predict(config):
             plt.plot(wave, x)
             plt.plot(wave, Y)
     plt.show()
+    print('Prediction completed for all .txt files')
 
 def batch_predict(config):
     print('batch predicting...')
@@ -392,6 +393,7 @@ def batch_predict(config):
             # 将测试结果保存进测试文件夹，过滤掉以__开头的键以避免警告
             save_dict = {k: v for k, v in tmp.items() if not k.startswith('__')}
             sio.savemat(filename, save_dict)
+            print(f'Prediction completed and saved to {filename}')
 
 def main(config):
     check_dir(config)
