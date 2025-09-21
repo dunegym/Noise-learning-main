@@ -31,7 +31,7 @@ class DefaultConfig(object):
     test_data_root = r'Testingdataset'
     # 预测数据集存放路径
     # predict_root = r'H:\PAPER\paper writing\Noise learning\数据\TERS\20220721 PIC'
-    predict_root = r'Test'
+    predict_root = r'Testingdataset'
     batch_size = 64  # batch size
     print_freq = 50  # print info every N batch
     max_epoch = 10
