@@ -408,5 +408,30 @@ def main(config):
 
 
 if __name__ == '__main__':
+    import sys
     opt = DefaultConfig()
+    
+    # 解析命令行参数
+    kwargs = {}
+    for arg in sys.argv[1:]:
+        if arg.startswith('--'):
+            key, value = arg[2:].split('=', 1)
+            # 尝试将值转换为适当的类型
+            if value.lower() == 'true':
+                value = True
+            elif value.lower() == 'false':
+                value = False
+            elif value.isdigit():
+                value = int(value)
+            else:
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass  # 保持为字符串
+            kwargs[key] = value
+    
+    # 更新配置参数
+    if kwargs:
+        opt._parse(kwargs, opt)
+    
     main(opt)
