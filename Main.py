@@ -389,9 +389,9 @@ def batch_predict(config):
             test_dir = test_result_dir(config)
             # 新的绝对文件名
             filename = os.path.join(test_dir, "".join(file))
-            # 将测试结果保存进测试文件夹
-            sio.savemat(filename, tmp)
-
+            # 将测试结果保存进测试文件夹，过滤掉以__开头的键以避免警告
+            save_dict = {k: v for k, v in tmp.items() if not k.startswith('__')}
+            sio.savemat(filename, save_dict)
 
 def main(config):
     check_dir(config)
