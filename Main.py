@@ -57,16 +57,19 @@ def save_log_dir(config):
 
 def train(config):
     # 指定使用多少个GPU
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
-    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    if config.use_gpu and torch.cuda.is_available():
+        os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    device = torch.device("cuda:0" if (config.use_gpu and torch.cuda.is_available()) else "cpu")
     # build the model
     model = eval("{}(1,1)".format(config.model_name))
     print(model)
     # 使用GPU
-    if torch.cuda.is_available():
+    if config.use_gpu and torch.cuda.is_available():
         # 多GPU训练
         model = nn.DataParallel(model)
         model = model.cuda()
+        model.to(device)
+    else:
         model.to(device)
     # 定义损失函数
     criterion = nn.MSELoss()
@@ -86,8 +89,12 @@ def train(config):
         global_step = config.global_step
         model_file = os.path.join(save_model_path, str(global_step) + '.pt')
         # 加载模型参数
-        kwargs = {'map_location': lambda storage, loc: storage.cuda([0, 1])}
-        state = torch.load(model_file, **kwargs)
+        if config.use_gpu and torch.cuda.is_available():
+            kwargs = {'map_location': lambda storage, loc: storage.cuda([0, 1])}
+            state = torch.load(model_file, **kwargs)
+        else:
+            kwargs = {'map_location': torch.device('cpu')}
+            state = torch.load(model_file, **kwargs)
         # from collections import OrderedDict
         # new_state = OrderedDict()
         # for k, v in state['model'].items():
@@ -136,7 +143,7 @@ def train(config):
             # 转换为float类型
             input_coef = input_coef.type(torch.FloatTensor)
             output_coef = output_coef.type(torch.FloatTensor)
-            if torch.cuda.is_available():
+            if config.use_gpu and torch.cuda.is_available():
                 input_coef, output_coef = input_coef.cuda(), output_coef.cuda()
                 input_coef.to(device)
                 output_coef.to(device)
@@ -192,7 +199,7 @@ def train(config):
             # float tensor
             input_coef = input_coef.type(torch.FloatTensor)
             output_coef = output_coef.type(torch.FloatTensor)
-            if torch.cuda.is_available():
+            if config.use_gpu and torch.cuda.is_available():
                 input_coef, output_coef = input_coef.cuda(), output_coef.cuda()
                 input_coef.to(device)
                 output_coef.to(device)
@@ -212,15 +219,21 @@ def test(config):
     # save_model_path = save_model_dir(config)
     model_file = os.path.join(config.test_model_dir, str(config.global_step) + '.pt')
     # 加载模型参数
-    state = torch.load(model_file)
+    if config.use_gpu and torch.cuda.is_available():
+        state = torch.load(model_file)
+    else:
+        state = torch.load(model_file, map_location=torch.device('cpu'))
     model.load_state_dict({k.replace('module.', ''): v for k, v in state['model'].items()})
     # model.load_state_dict(state['model'])
     print('Successfully loaded The model saved at global step = {}'.format(state['global_step']))
     # 固定模型
     model.eval()
-    if torch.cuda.is_available():
+    if config.use_gpu and torch.cuda.is_available():
         model = model.cuda()
         print('using gpu...')
+    else:
+        model = model.cpu()
+        print('using cpu...')
     # 读取测试数据集
     filenames = os.listdir(config.test_data_root)
     for file in filenames:
@@ -252,7 +265,7 @@ def test(config):
             # preds, predr = [], []
             for i in range(len(group_total)):
                 xt = group_total[i]
-                if torch.cuda.is_available():
+                if config.use_gpu and torch.cuda.is_available():
                     xt = xt.cuda()
                 yt = model(xt).detach().cpu()
                 predt.append(yt)
@@ -281,15 +294,21 @@ def predict(config):
     save_model_path = save_model_dir(config)
     model_file = os.path.join(save_model_path, str(config.global_step) + '.pt')
     # 加载模型参数
-    state = torch.load(model_file)
+    if config.use_gpu and torch.cuda.is_available():
+        state = torch.load(model_file)
+    else:
+        state = torch.load(model_file, map_location=torch.device('cpu'))
     model.load_state_dict({k.replace('module.', ''): v for k, v in state['model'].items()})
     # model.load_state_dict(state['model'])
     print('Successfully loaded The model saved at global step = {}'.format(state['global_step']))
     # 固定模型
     model.eval()
-    if torch.cuda.is_available():
+    if config.use_gpu and torch.cuda.is_available():
         model = model.cuda()
         print('using gpu...')
+    else:
+        model = model.cpu()
+        print('using cpu...')
     # 定义滑动窗口滤波器
 
     # def moving_average(data, n):
@@ -318,7 +337,7 @@ def predict(config):
             # 转换为torch tensor
             inpt = torch.from_numpy(inpt).float()
             # 预测结果
-            if torch.cuda.is_available():
+            if config.use_gpu and torch.cuda.is_available():
                 inpt = inpt.cuda()
             yt = model(inpt).detach().cpu().numpy()
             yt = yt.reshape(-1, )
@@ -342,15 +361,21 @@ def batch_predict(config):
     # save_model_path = save_model_dir(config)
     model_file = os.path.join(config.test_model_dir, str(config.global_step) + '.pt')
     # 加载模型参数
-    state = torch.load(model_file)
+    if config.use_gpu and torch.cuda.is_available():
+        state = torch.load(model_file)
+    else:
+        state = torch.load(model_file, map_location=torch.device('cpu'))
     model.load_state_dict({k.replace('module.', ''): v for k, v in state['model'].items()})
     # model.load_state_dict(state['model'])
     print('Successfully loaded The model saved at global step = {}'.format(state['global_step']))
     # 固定模型
     model.eval()
-    if torch.cuda.is_available():
+    if config.use_gpu and torch.cuda.is_available():
         model = model.cuda()
         print('using gpu...')
+    else:
+        model = model.cpu()
+        print('using cpu...')
     # 读取测试数据集
     filenames = os.listdir(config.predict_root)
     for file in filenames:
@@ -376,7 +401,7 @@ def batch_predict(config):
             preds = []
             for i in range(len(group_total)):
                 xt = group_total[i]
-                if torch.cuda.is_available():
+                if config.use_gpu and torch.cuda.is_available():
                     xt = xt.cuda()
                 yt = model(xt).detach().cpu()
                 preds.append(yt)

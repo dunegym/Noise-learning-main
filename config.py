@@ -65,7 +65,14 @@ class DefaultConfig(object):
                 warnings.warn("Warning: opt has not attribute %s" % k)
             setattr(self, k, v)  # 设置k属性的值
 
-        opt.device = torch.device('cuda') if opt.use_gpu else torch.device('cpu')
+        # 只有在启用GPU且CUDA可用时才使用CUDA设备
+        if opt.use_gpu and torch.cuda.is_available():
+            opt.device = torch.device('cuda')
+        else:
+            opt.device = torch.device('cpu')
+            # 如果请求使用GPU但不可用，给出警告
+            if opt.use_gpu:
+                print("Warning: CUDA is not available. Using CPU instead.")
         '''
         torch.device代表将torch.Tensor分配到的设备的对象。
         torch.device包含一个设备类型（'cpu'或'cuda'设备类型）
