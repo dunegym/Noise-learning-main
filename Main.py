@@ -189,14 +189,16 @@ def train(config):
             for index in range(spectra_num):
                 input_coef[index, :] = dct(noisy_spectra[index, :], norm='ortho')
                 output_coef[index, :] = dct(noise[index, :], norm='ortho')
-            # ===== 新增：批内归一化（避免超大幅值导致MSE爆炸） =====
-            batch_max = max(np.max(np.abs(input_coef)), np.max(np.abs(output_coef)), 1e-8)
-            input_coef = input_coef / batch_max
-            output_coef = output_coef / batch_max
-            # 打印调试信息（第一次几步）
+            # ===== 修改：按样本最大绝对值做归一化（保持样本一致性，便于在验证/预测阶段复现） =====
+            eps = 1e-8
+            # 每个样本的缩放因子（基于 input_coef 的最大绝对值），形状 (spectra_num,)
+            scales = np.maximum(np.max(np.abs(input_coef), axis=1), eps)
+            input_coef = input_coef / scales[:, None]
+            output_coef = output_coef / scales[:, None]
+            # 打印调试信息（输出缩放统计）
             if idx % config.print_freq == 0:
-                print(f"[DEBUG] batch {idx} stats: input max {np.max(input_coef):.3e}, "
-                      f"output max {np.max(output_coef):.3e}")
+                print(f"[DEBUG] batch {idx} sample_scale mean {scales.mean():.3e}, "
+                      f"min {scales.min():.3e}, max {scales.max():.3e}")
             # ===== 归一化结束 =====
             # reshape 成3维度
             input_coef = np.reshape(input_coef, (-1, 1, spec))
@@ -269,6 +271,11 @@ def train(config):
             for index in range(spectra_num):
                 input_coef[index, :] = dct(noisy_spectra[index, :], norm='ortho')
                 output_coef[index, :] = dct(noise[index, :], norm='ortho')
+            # ===== 与训练一致：按样本最大值归一化 =====
+            eps = 1e-8
+            scales_v = np.maximum(np.max(np.abs(input_coef), axis=1), eps)
+            input_coef = input_coef / scales_v[:, None]
+            output_coef = output_coef / scales_v[:, None]
             # reshape 成3维度
             input_coef = np.reshape(input_coef, (-1, 1, spec))
             output_coef = np.reshape(output_coef, (-1, 1, spec))
@@ -284,6 +291,7 @@ def train(config):
                 output_coef.to(device)
             preds_v = model(input_coef)
             valid_loss += criterion(preds_v, output_coef).item()
+            # 注意：若想在外部对预测值做反归一化保存结果，需要把 preds_v * scales_v[:,None] 恢复
         valid_loss = valid_loss / len(valid_loader)
         writer.add_scalar('valid loss', valid_loss, global_step=global_step)
         # 一个epoch完成后调整学习率
@@ -411,16 +419,21 @@ def predict(config):
             # err = x - xs
             # 作为输入数据
             coe_dct = dct(x, norm='ortho')
+            # ===== 与训练一致：按样本最大值归一化并在预测后乘回 =====
+            eps = 1e-8
+            scale = max(np.max(np.abs(coe_dct)), eps)
+            coe_dct_norm = coe_dct / scale
             # 更改shape
-            inpt = coe_dct.reshape(1, 1, -1)
-            # 转换为torch tensor
+            inpt = coe_dct_norm.reshape(1, 1, -1)
+             # 转换为torch tensor
             inpt = torch.from_numpy(inpt).float()
-            # 预测结果
+             # 预测结果
             if config.use_gpu and torch.cuda.is_available():
                 inpt = inpt.cuda()
             yt = model(inpt).detach().cpu().numpy()
             yt = yt.reshape(-1, )
-            # idct 变换
+            # 反归一化并 idct 变换
+            yt = yt * scale
             noise = idct(yt, norm='ortho')
             Y = x - noise
             denoised = np.array([wave, Y])
