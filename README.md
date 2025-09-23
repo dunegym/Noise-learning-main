@@ -8,6 +8,8 @@ This project implements a deep learning approach for instrumental noise modeling
 - Support for both Raman spectroscopy (Horiba LabRAM) and other spectroscopy instruments
 - Training from scratch or resuming from checkpoints
 - Testing and prediction capabilities
+- Supports reading MATLAB v7.3 format files using h5py
+- Automatic detection and handling of different MATLAB file formats
 
 ## Training Modes
 
@@ -91,3 +93,27 @@ Model checkpoints are saved in the `Checkpoints` directory, organized by instrum
 - SciPy
 - Matplotlib
 - TensorBoard
+- h5py (for reading MATLAB v7.3 files)
+
+## Installation
+
+To install the required dependencies, run:
+
+```bash
+pip install -r requirements.txt
+```
+
+Note: The `h5py` library is required for reading MATLAB v7.3 format files. If you encounter issues with h5py installation, you may need to install it separately:
+
+```bash
+pip install h5py
+```
+
+## MATLAB File Format Support
+
+This project now supports both older MATLAB file formats and the newer v7.3 format:
+
+- **Older formats (< v7.3)**: Read using `scipy.io.loadmat`
+- **Newer formats (v7.3+)**: Read using `h5py` library
+
+The data loading module automatically detects the file format and uses the appropriate reader. No changes are needed to your existing code - it will work seamlessly with both formats.

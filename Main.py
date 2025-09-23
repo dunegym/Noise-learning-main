@@ -17,6 +17,7 @@ import scipy.io as sio
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 import glob
+import h5py
 
 
 # define the checkdir

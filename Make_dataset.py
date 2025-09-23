@@ -8,6 +8,7 @@ import numpy as np
 import os
 import torch
 import scipy.io as sio
+import h5py
 from torch.utils.data import Dataset, DataLoader
 import matplotlib.pyplot as plt
 
@@ -16,6 +17,37 @@ class Read_data:
     def __init__(self, path, valid_ratio=20):
         self.path = path
         self.valid_ratio = valid_ratio
+
+    def _load_mat_file(self, file_path):
+        """
+        Load .mat file, automatically detecting v7.3 (HDF5) or older format
+        """
+        try:
+            # First try to load as regular .mat file
+            tmp = sio.loadmat(file_path)
+            # Extract noise data
+            for key in tmp.keys():
+                if key == 'noise':
+                    data = np.array(tmp[key])
+                    return data
+        except NotImplementedError:
+            # If that fails, try loading as HDF5 file (v7.3)
+            with h5py.File(file_path, 'r') as f:
+                # Extract noise data
+                if 'noise' in f:
+                    data = np.array(f['noise'])
+                    # Note: HDF5 data may have different orientation
+                    return data
+                else:
+                    # Try to find any dataset that looks like noise data
+                    for key in f.keys():
+                        if key == 'noise' or 'noise' in key.lower():
+                            data = np.array(f[key])
+                            return data
+        except Exception as e:
+            print(f"Error loading file {file_path}: {e}")
+            raise
+        return None
 
     def read_file(self):
         """
@@ -32,16 +64,22 @@ class Read_data:
             if os.path.splitext(filename)[1] == '.mat':
                 # 绝对路径+文件名
                 name = self.path + '/' + filename
-                tmp = sio.loadmat(name)
-                for key in tmp.keys():
-                    if key == 'noise':
-                        data = np.array(tmp[key])
-                data = data.T
-                num, spec = data.shape
-                valid_num = int(np.ceil(self.valid_ratio / 100 * num))
-                tmp_valid_data, tmp_train_data = data[0:valid_num], data[valid_num:]
-                train_data.append(tmp_train_data)
-                valid_data.append(tmp_valid_data)
+                try:
+                    data = self._load_mat_file(name)
+                    if data is not None:
+                        data = data.T
+                        num, spec = data.shape
+                        valid_num = int(np.ceil(self.valid_ratio / 100 * num))
+                        tmp_valid_data, tmp_train_data = data[0:valid_num], data[valid_num:]
+                        train_data.append(tmp_train_data)
+                        valid_data.append(tmp_valid_data)
+                except Exception as e:
+                    print(f"Error processing file {name}: {e}")
+                    continue
+                    
+        if not train_data or not valid_data:
+            raise ValueError("No valid data found in the specified path")
+            
         train_data_tmp = np.array(train_data[0])
         valid_data_tmp = np.array(valid_data[0])
 
@@ -51,9 +89,17 @@ class Read_data:
                 train_data_tmp = np.concatenate((train_data_tmp, train_data[i]), axis=0)
                 valid_data_tmp = np.concatenate((valid_data_tmp, valid_data[i]), axis=0)
 
-        train_dataset = train_data_tmp.reshape((-1, 1, spec))
-        valid_dataset = valid_data_tmp.reshape((-1, 1, spec))
-        return train_dataset, valid_dataset
+        # Get the spec dimension from the data
+        _, _, spec = train_data_tmp.shape if len(train_data_tmp.shape) == 3 else (train_data_tmp.shape[0], 1, train_data_tmp.shape[-1])
+        if len(train_data_tmp.shape) == 2:
+            train_data_tmp = train_data_tmp.reshape((-1, 1, spec))
+            valid_data_tmp = valid_data_tmp.reshape((-1, 1, spec))
+        else:
+            # Ensure correct shape
+            train_dataset = train_data_tmp
+            valid_dataset = valid_data_tmp
+
+        return train_data_tmp, valid_data_tmp
 
 
 # 制作数据集
