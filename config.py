@@ -34,7 +34,7 @@ class DefaultConfig(object):
     predict_root = r'Predict'
     batch_size = 64  # batch size
     print_freq = 50  # print info every N batch
-    max_epoch = 10
+    max_epoch = 50
     lr = 0.001  # initial learning rate
     lr_decay = 0.5  # when val_loss increase, lr = lr*lr_decay
     # 定义训练/测试状态/预测状态

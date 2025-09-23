@@ -172,6 +172,10 @@ def train(config):
     # 定义tensorboard
     writer = SummaryWriter(save_log)
     for epoch in range(config.max_epoch):
+        print(f'Epoch {epoch+1}/{config.max_epoch} starting...')
+        epoch_loss = 0.0
+        epoch_batches = 0
+        
         for idx, noise in enumerate(train_loader):
             noise = np.squeeze(noise.numpy())
             spectra_num, spec = noise.shape
@@ -205,12 +209,25 @@ def train(config):
             train_loss = criterion(preds, output_coef)
             train_loss.backward()
             optimizer.step()
+            
+            epoch_loss += train_loss.item()
+            epoch_batches += 1
+            
             # 将训练损失和验证损失写入日志
             writer.add_scalar('train loss', train_loss.item(), global_step=global_step)
             # 每隔xx步打印训练loss
             if idx % config.print_freq == 0:
-                print('epoch {}, batch {}, global step  {}, train loss = {}'.format(
-                    epoch, idx, global_step, train_loss.item()))
+                print('epoch {}, batch {}/{}, global step {}, train loss = {}'.format(
+                    epoch+1, idx, len(train_loader)-1, global_step, train_loss.item()))
+            
+            # 每50个batch显示一次进度
+            if idx % 50 == 0 and idx > 0:
+                print('Epoch {} progress: {}/{} batches completed'.format(
+                    epoch+1, idx, len(train_loader)-1))
+        
+        # 打印本轮epoch的平均损失
+        avg_epoch_loss = epoch_loss / epoch_batches if epoch_batches > 0 else 0
+        print(f'Epoch {epoch+1}/{config.max_epoch} completed. Average loss: {avg_epoch_loss:.6f}')
 
         # 保存模型参数,多GPU一定要用module.state_dict()
         state = {'model': model.state_dict(), 'optimizer': optimizer.state_dict(),
