@@ -99,7 +99,7 @@ def train(config):
     # 定义损失函数
     criterion = nn.MSELoss()
     # 定义优化器
-    optimizer = torch.optim.SGD(model.parameters(), lr=config.lr, momentum=0.9)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
 
     # 定义学习速率调整
     schedual = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=10, eta_min=0.0005)
@@ -189,6 +189,15 @@ def train(config):
             for index in range(spectra_num):
                 input_coef[index, :] = dct(noisy_spectra[index, :], norm='ortho')
                 output_coef[index, :] = dct(noise[index, :], norm='ortho')
+            # ===== 新增：批内归一化（避免超大幅值导致MSE爆炸） =====
+            batch_max = max(np.max(np.abs(input_coef)), np.max(np.abs(output_coef)), 1e-8)
+            input_coef = input_coef / batch_max
+            output_coef = output_coef / batch_max
+            # 打印调试信息（第一次几步）
+            if idx % config.print_freq == 0:
+                print(f"[DEBUG] batch {idx} stats: input max {np.max(input_coef):.3e}, "
+                      f"output max {np.max(output_coef):.3e}")
+            # ===== 归一化结束 =====
             # reshape 成3维度
             input_coef = np.reshape(input_coef, (-1, 1, spec))
             output_coef = np.reshape(output_coef, (-1, 1, spec))
@@ -208,6 +217,8 @@ def train(config):
             preds = model(input_coef)
             train_loss = criterion(preds, output_coef)
             train_loss.backward()
+            # 梯度裁剪防止梯度爆炸
+            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=5.0)
             optimizer.step()
             
             epoch_loss += train_loss.item()
