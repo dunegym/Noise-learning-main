@@ -16,6 +16,7 @@ from scipy.fftpack import dct, idct
 import scipy.io as sio
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
+import glob
 
 
 # define the checkdir
@@ -55,6 +56,29 @@ def save_log_dir(config):
     return save_log_dir
 
 
+# 查找最新的checkpoint文件
+def find_latest_checkpoint(save_model_path):
+    checkpoint_files = glob.glob(os.path.join(save_model_path, "*.pt"))
+    if not checkpoint_files:
+        return None, 0
+    
+    # 提取步数并找到最大的
+    steps = []
+    for f in checkpoint_files:
+        try:
+            step = int(os.path.basename(f).split('.')[0])
+            steps.append((step, f))
+        except ValueError:
+            continue
+    
+    if not steps:
+        return None, 0
+    
+    # 返回步数最大的checkpoint
+    steps.sort(key=lambda x: x[0], reverse=True)
+    return steps[0][1], steps[0][0]
+
+
 def train(config):
     # 指定使用多少个GPU
     if config.use_gpu and torch.cuda.is_available():
@@ -84,8 +108,40 @@ def train(config):
     save_log = save_log_dir(config)
     # 全局训练步数
     global_step = 0
-    # 是否加载预训练模型
-    if config.is_pretrain:
+    
+    # 根据配置决定是否加载预训练模型或最新的checkpoint
+    if config.is_pretrain or config.resume_from_latest:
+        if config.is_pretrain:
+            # 加载指定的预训练模型
+            global_step = config.global_step
+            model_file = os.path.join(save_model_path, str(global_step) + '.pt')
+            if not os.path.exists(model_file):
+                # 如果指定的模型不存在，尝试从测试模型目录加载
+                model_file = os.path.join(config.test_model_dir, str(global_step) + '.pt')
+        else:
+            # 查找最新的checkpoint文件
+            model_file, global_step = find_latest_checkpoint(save_model_path)
+            
+        # 如果找到了模型文件，则加载
+        if model_file and os.path.exists(model_file):
+            # 加载模型参数
+            if config.use_gpu and torch.cuda.is_available():
+                kwargs = {'map_location': lambda storage, loc: storage.cuda([0, 1])}
+                state = torch.load(model_file, **kwargs)
+            else:
+                kwargs = {'map_location': torch.device('cpu')}
+                state = torch.load(model_file, **kwargs)
+            model.load_state_dict(state['model'])
+            # 恢复优化器状态
+            optimizer.load_state_dict(state['optimizer'])
+            print('Successfully loaded the model saved at global step = {}'.format(global_step))
+        else:
+            if config.is_pretrain:
+                print('Warning: Pretrained model file not found, starting from scratch')
+            elif config.resume_from_latest:
+                print('No checkpoint found, starting from scratch')
+    elif config.is_pretrain:
+        # 保持原有的预训练逻辑以确保向后兼容
         global_step = config.global_step
         model_file = os.path.join(save_model_path, str(global_step) + '.pt')
         # 加载模型参数
@@ -95,17 +151,11 @@ def train(config):
         else:
             kwargs = {'map_location': torch.device('cpu')}
             state = torch.load(model_file, **kwargs)
-        # from collections import OrderedDict
-        # new_state = OrderedDict()
-        # for k, v in state['model'].items():
-        # name = 'module.' + k  # add `module.`
-        # new_state[name] = v
-        # model.load_state_dict({k.replace('module.', ''): v for k, v in state['model'].items()})
-        # model.load_state_dict(new_state)
         model.load_state_dict(state['model'])
         # 恢复优化器状态
         optimizer.load_state_dict(state['optimizer'])
         print('Successfully loaded the pretrained model saved at global step = {}'.format(global_step))
+    
     # 加载数据集
     reader = Read_data(config.train_data_root, config.valid_ratio)
     train_set, valid_set = reader.read_file()

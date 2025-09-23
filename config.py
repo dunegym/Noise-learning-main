@@ -55,6 +55,9 @@ class DefaultConfig(object):
     valid_ratio = 20
     # 定义输入数据名称
     test_varible = ['lcube', 'cube']
+    
+    # 新增参数：是否从最新的checkpoint恢复训练
+    resume_from_latest = False
 
     def _parse(self, kwargs, opt=None):
         """

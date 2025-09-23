@@ -8,9 +8,12 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 # 进一步减少batch size并设置其他内存优化选项
 echo "使用进一步优化的内存设置进行训练..."
-python Main.py --is_training=True --is_pretrain=False --is_testing=False --is_predicting=False --is_batch_predicting=False --batch_size=16 --max_epoch=5
+python Main.py --is_training=True --is_pretrain=False --resume_from_latest=False --is_testing=False --is_predicting=False --is_batch_predicting=False --batch_size=16 --max_epoch=5
 
 echo "如果要继续训练预训练模型，请使用以下命令："
-echo "python Main.py --is_training=True --is_pretrain=True --global_step=562800 --is_testing=False --is_predicting=False --is_batch_predicting=False --batch_size=16 --max_epoch=5"
+echo "python Main.py --is_training=True --is_pretrain=True --global_step=562800 --resume_from_latest=False --is_testing=False --is_predicting=False --is_batch_predicting=False --batch_size=16 --max_epoch=5"
+
+echo "如果要从最新的checkpoint恢复训练，请使用以下命令："
+echo "python Main.py --is_training=True --is_pretrain=False --resume_from_latest=True --is_testing=False --is_predicting=False --is_batch_predicting=False --batch_size=16 --max_epoch=5"
 
 echo "训练完成！"
