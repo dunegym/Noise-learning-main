@@ -87,18 +87,34 @@ class UNet(nn.Module, ABC):
 
         # decoding + concat path
         d5 = self.Up5(x5)
+        # 处理维度不匹配问题
+        if x4.size()[2] != d5.size()[2]:
+            # 调整d5的尺寸以匹配x4
+            d5 = torch.nn.functional.interpolate(d5, size=x4.size()[2], mode='linear', align_corners=True)
         d5 = torch.cat((x4, d5), dim=1)
         d5 = self.Up_conv5(d5)
 
         d4 = self.Up4(d5)
+        # 处理维度不匹配问题
+        if x3.size()[2] != d4.size()[2]:
+            # 调整d4的尺寸以匹配x3
+            d4 = torch.nn.functional.interpolate(d4, size=x3.size()[2], mode='linear', align_corners=True)
         d4 = torch.cat((x3, d4), dim=1)
         d4 = self.Up_conv4(d4)
 
         d3 = self.Up3(d4)
+        # 处理维度不匹配问题
+        if x2.size()[2] != d3.size()[2]:
+            # 调整d3的尺寸以匹配x2
+            d3 = torch.nn.functional.interpolate(d3, size=x2.size()[2], mode='linear', align_corners=True)
         d3 = torch.cat((x2, d3), dim=1)
         d3 = self.Up_conv3(d3)
 
         d2 = self.Up2(d3)
+        # 处理维度不匹配问题
+        if x1.size()[2] != d2.size()[2]:
+            # 调整d2的尺寸以匹配x1
+            d2 = torch.nn.functional.interpolate(d2, size=x1.size()[2], mode='linear', align_corners=True)
         d2 = torch.cat((x1, d2), dim=1)
         d2 = self.Up_conv2(d2)
 
@@ -188,18 +204,34 @@ class UNet_CA(nn.Module, ABC):
 
         # decoding + concat path
         d5 = self.Up5(x5)
+        # 处理维度不匹配问题
+        if x4.size()[2] != d5.size()[2]:
+            # 调整d5的尺寸以匹配x4
+            d5 = torch.nn.functional.interpolate(d5, size=x4.size()[2], mode='linear', align_corners=True)
         d5 = torch.cat((x4, d5), dim=1)
         d5 = self.Up_conv5(d5)
 
         d4 = self.Up4(d5)
+        # 处理维度不匹配问题
+        if x3.size()[2] != d4.size()[2]:
+            # 调整d4的尺寸以匹配x3
+            d4 = torch.nn.functional.interpolate(d4, size=x3.size()[2], mode='linear', align_corners=True)
         d4 = torch.cat((x3, d4), dim=1)
         d4 = self.Up_conv4(d4)
 
         d3 = self.Up3(d4)
+        # 处理维度不匹配问题
+        if x2.size()[2] != d3.size()[2]:
+            # 调整d3的尺寸以匹配x2
+            d3 = torch.nn.functional.interpolate(d3, size=x2.size()[2], mode='linear', align_corners=True)
         d3 = torch.cat((x2, d3), dim=1)
         d3 = self.Up_conv3(d3)
 
         d2 = self.Up2(d3)
+        # 处理维度不匹配问题
+        if x1.size()[2] != d2.size()[2]:
+            # 调整d2的尺寸以匹配x1
+            d2 = torch.nn.functional.interpolate(d2, size=x1.size()[2], mode='linear', align_corners=True)
         d2 = torch.cat((x1, d2), dim=1)
         d2 = self.Up_conv2(d2)
 
@@ -258,22 +290,42 @@ class UNet_CA6(nn.Module, ABC):
 
         # decoding + concat path
         d6 = self.Up6(x6)
+        # 处理维度不匹配问题
+        if x5.size()[2] != d6.size()[2]:
+            # 调整d6的尺寸以匹配x5
+            d6 = torch.nn.functional.interpolate(d6, size=x5.size()[2], mode='linear', align_corners=True)
         d6 = torch.cat((x5, d6), dim=1)
         d6 = self.Up_conv6(d6)
 
         d5 = self.Up5(d6)
+        # 处理维度不匹配问题
+        if x4.size()[2] != d5.size()[2]:
+            # 调整d5的尺寸以匹配x4
+            d5 = torch.nn.functional.interpolate(d5, size=x4.size()[2], mode='linear', align_corners=True)
         d5 = torch.cat((x4, d5), dim=1)
         d5 = self.Up_conv5(d5)
 
         d4 = self.Up4(d5)
+        # 处理维度不匹配问题
+        if x3.size()[2] != d4.size()[2]:
+            # 调整d4的尺寸以匹配x3
+            d4 = torch.nn.functional.interpolate(d4, size=x3.size()[2], mode='linear', align_corners=True)
         d4 = torch.cat((x3, d4), dim=1)
         d4 = self.Up_conv4(d4)
 
         d3 = self.Up3(d4)
+        # 处理维度不匹配问题
+        if x2.size()[2] != d3.size()[2]:
+            # 调整d3的尺寸以匹配x2
+            d3 = torch.nn.functional.interpolate(d3, size=x2.size()[2], mode='linear', align_corners=True)
         d3 = torch.cat((x2, d3), dim=1)
         d3 = self.Up_conv3(d3)
 
         d2 = self.Up2(d3)
+        # 处理维度不匹配问题
+        if x1.size()[2] != d2.size()[2]:
+            # 调整d2的尺寸以匹配x1
+            d2 = torch.nn.functional.interpolate(d2, size=x1.size()[2], mode='linear', align_corners=True)
         d2 = torch.cat((x1, d2), dim=1)
         d2 = self.Up_conv2(d2)
 
@@ -339,26 +391,50 @@ class UNet_CA7(nn.Module, ABC):
 
         # decoding + concat path
         d7 = self.Up7(x7)
+        # 处理维度不匹配问题
+        if x6.size()[2] != d7.size()[2]:
+            # 调整d7的尺寸以匹配x6
+            d7 = torch.nn.functional.interpolate(d7, size=x6.size()[2], mode='linear', align_corners=True)
         d7 = torch.cat((x6, d7), dim=1)
         d7 = self.Up_conv7(d7)
 
         d6 = self.Up6(d7)
+        # 处理维度不匹配问题
+        if x5.size()[2] != d6.size()[2]:
+            # 调整d6的尺寸以匹配x5
+            d6 = torch.nn.functional.interpolate(d6, size=x5.size()[2], mode='linear', align_corners=True)
         d6 = torch.cat((x5, d6), dim=1)
         d6 = self.Up_conv6(d6)
 
         d5 = self.Up5(d6)
+        # 处理维度不匹配问题
+        if x4.size()[2] != d5.size()[2]:
+            # 调整d5的尺寸以匹配x4
+            d5 = torch.nn.functional.interpolate(d5, size=x4.size()[2], mode='linear', align_corners=True)
         d5 = torch.cat((x4, d5), dim=1)
         d5 = self.Up_conv5(d5)
 
         d4 = self.Up4(d5)
+        # 处理维度不匹配问题
+        if x3.size()[2] != d4.size()[2]:
+            # 调整d4的尺寸以匹配x3
+            d4 = torch.nn.functional.interpolate(d4, size=x3.size()[2], mode='linear', align_corners=True)
         d4 = torch.cat((x3, d4), dim=1)
         d4 = self.Up_conv4(d4)
 
         d3 = self.Up3(d4)
+        # 处理维度不匹配问题
+        if x2.size()[2] != d3.size()[2]:
+            # 调整d3的尺寸以匹配x2
+            d3 = torch.nn.functional.interpolate(d3, size=x2.size()[2], mode='linear', align_corners=True)
         d3 = torch.cat((x2, d3), dim=1)
         d3 = self.Up_conv3(d3)
 
         d2 = self.Up2(d3)
+        # 处理维度不匹配问题
+        if x1.size()[2] != d2.size()[2]:
+            # 调整d2的尺寸以匹配x1
+            d2 = torch.nn.functional.interpolate(d2, size=x1.size()[2], mode='linear', align_corners=True)
         d2 = torch.cat((x1, d2), dim=1)
         d2 = self.Up_conv2(d2)
 
