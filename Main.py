@@ -81,9 +81,9 @@ def find_latest_checkpoint(save_model_path):
 
 
 def train(config):
-    # 指定使用多少个GPU
-    if config.use_gpu and torch.cuda.is_available():
-        os.environ['CUDA_VISIBLE_DEVICES'] = '0,1'
+    # 如需指定可见 GPU，先设置环境变量（必须在 torch.cuda.is_available() 之前）
+    if config.use_gpu and getattr(config, 'visible_devices', None):
+        os.environ['CUDA_VISIBLE_DEVICES'] = config.visible_devices  # e.g. '0,1'
     device = torch.device("cuda:0" if (config.use_gpu and torch.cuda.is_available()) else "cpu")
     # build the model
     model = eval("{}(1,1)".format(config.model_name))
@@ -345,6 +345,16 @@ def test(config):
                 inpts[idx, :] = dct(np.squeeze(inpts[idx, :]), norm='ortho')
             for idx in range(numr):
                 inptr[idx, :] = dct(np.squeeze(inptr[idx, :]), norm='ortho')
+            # ===== 与训练保持一致的按样本最大值归一化 =====
+            eps = 1e-8
+            # 对 inpts 和 inptr 分别按样本最大值归一
+            def normalize_batch(arr):
+                scales = np.maximum(np.max(np.abs(arr), axis=1), eps)
+                return (arr / scales[:, None], scales)
+            inpts_norm, scales_s = normalize_batch(inpts)
+            inptr_norm, scales_r = normalize_batch(inptr)
+            # 用归一化后的输入做预测
+            inpts, inptr = inpts_norm, inptr_norm
             # 转换为3-D tensor
             inpts, inptr = np.array([inpts]).reshape((nums, 1, spec)), np.array([inptr]).reshape((numr, 1, spec))
             inpts, inptr = torch.from_numpy(inpts), torch.from_numpy(inptr)
@@ -366,9 +376,11 @@ def test(config):
             predt = predt.numpy()
             predt = np.squeeze(predt)
             preds, predr = predt[:nums, :], predt[nums:, :]
+            # 反归一化并 IDCT
             for idx in range(nums):
-                preds[idx, :] = idct(np.squeeze(preds[idx, :]), norm='ortho')
-                predr[idx, :] = idct(np.squeeze(predr[idx, :]), norm='ortho')
+                preds[idx, :] = idct(np.squeeze(preds[idx, :] * scales_s[idx]), norm='ortho')
+            for idx in range(numr):
+                predr[idx, :] = idct(np.squeeze(predr[idx, :] * scales_r[idx]), norm='ortho')
 
             tmp['preds'], tmp['predr'] = preds.T, predr.T
             # 获取存放测试结果目录位置
@@ -443,7 +455,7 @@ def predict(config):
             noise = idct(yt, norm='ortho')
             Y = x - noise
             denoised = np.array([wave, Y])
-            np.savetxt(new_name, denoised, delimiter='t')
+            np.savetxt(new_name, denoised, delimiter='\t')
             i = i + 1
             plt.subplot(3, 3, i)
             plt.plot(wave, x)
