@@ -328,7 +328,13 @@ def test(config):
             # 测试数据的绝对路径
             name = config.test_data_root + '/' + file
             # 加载测试数据
-            tmp = sio.loadmat(name)
+            try:
+                tmp = sio.loadmat(name)
+            except NotImplementedError:
+                import h5py
+                with h5py.File(name, 'r') as f:
+                    # 读取所有数据集
+                    tmp = {key: np.array(f[key]) for key in f.keys()}
             inpts, inptr = np.array(tmp[config.test_varible[0]]), np.array(tmp[config.test_varible[1]])
             inpts, inptr = inpts.T, inptr.T
             # s-simulated仿真数据, r-real实际数据
@@ -445,6 +451,33 @@ def predict(config):
     plt.show()
     print('Prediction completed for all .txt files')
 
+def load_mat_file(filename):
+    """Load .mat file, automatically handling v7.3 format"""
+    try:
+        return sio.loadmat(filename)
+    except NotImplementedError:
+        with h5py.File(filename, 'r') as f:
+            return {key: np.array(f[key]) for key in f.keys()}
+
+def amplitude_correction(original, denoised):
+    """校正幅度以匹配原始光谱"""
+    # 计算原始光谱和去噪光谱的幅度范围
+    orig_amplitude = np.max(original) - np.min(original)
+    denoised_amplitude = np.max(denoised) - np.min(denoised)
+    
+    # 计算幅度缩放因子
+    amplitude_scale = orig_amplitude / denoised_amplitude if denoised_amplitude != 0 else 1.0
+    
+    # 应用幅度校正
+    corrected = denoised * amplitude_scale
+    
+    # 调整偏移以匹配原始光谱的均值
+    orig_mean = np.mean(original)
+    denoised_mean = np.mean(denoised)
+    corrected = corrected + (orig_mean - np.mean(corrected))
+    
+    return corrected
+
 def batch_predict(config):
     print('batch predicting...')
     # build the model
@@ -475,20 +508,44 @@ def batch_predict(config):
             # 测试数据的绝对路径
             name = config.predict_root + '/' + file
             # 加载测试数据
-            tmp = sio.loadmat(name)
+            try:
+                tmp = sio.loadmat(name)
+            except NotImplementedError:
+                with h5py.File(name, 'r') as f:
+                    # 读取所有数据集
+                    tmp = {key: np.array(f[key]) for key in f.keys()}
             inpts = np.array(tmp['cube'])
             inpts = inpts.T
             nums, spec = inpts.shape
-            # DCT 变换
+            print(f'Data shape: {inpts.shape}')
+            
+            # 保存原始数据用于后续校正
+            original_spectra = inpts.copy()
+            
+            # DCT变换和归一化
+            scales = []  # 保存每个样本的尺度因子
+            normalized_inputs = []
+            
             for idx in range(nums):
-                inpts[idx, :] = dct(np.squeeze(inpts[idx, :]), norm='ortho')
-            # 转换为3-D tensor
-            inpts = np.array([inpts]).reshape((nums, 1, spec))
-            inpts = torch.from_numpy(inpts)
-
+                # DCT变换
+                coe_dct = dct(np.squeeze(inpts[idx, :]), norm='ortho')
+                
+                # 归一化
+                eps = 1e-8
+                scale = max(np.max(np.abs(coe_dct)), eps)
+                coe_dct_norm = coe_dct / scale
+                
+                # 保存尺度因子和归一化数据
+                scales.append(scale)
+                normalized_inputs.append(coe_dct_norm)
+            
+            # 转换为3D张量
+            normalized_inputs = np.array(normalized_inputs).reshape((nums, 1, spec))
+            normalized_inputs = torch.from_numpy(normalized_inputs).float()
+            
             # 划分小batch批量测试
             test_size = 32
-            group_total = torch.split(inpts, test_size)
+            group_total = torch.split(normalized_inputs, test_size)
             # 存放测试结果
             preds = []
             for i in range(len(group_total)):
@@ -500,9 +557,24 @@ def batch_predict(config):
             preds = torch.cat(preds, dim=0)
             preds = preds.numpy()
             preds = np.squeeze(preds)
+            
+            # 反归一化和IDCT变换
+            denoised_spectra = np.zeros_like(original_spectra)
+            
             for idx in range(nums):
-                preds[idx, :] = idct(np.squeeze(preds[idx, :]), norm='ortho')
-            tmp['preds'] = preds.T
+                # 反归一化
+                pred_scaled = preds[idx, :] * scales[idx]
+                
+                # IDCT变换
+                denoised_spectra[idx, :] = idct(np.squeeze(pred_scaled), norm='ortho')
+                
+                # 应用幅度校正
+                denoised_spectra[idx, :] = amplitude_correction(
+                    original_spectra[idx, :], 
+                    denoised_spectra[idx, :]
+                )
+            
+            tmp['preds'] = denoised_spectra.T
             # 获取存放测试结果目录位置
             test_dir = test_result_dir(config)
             # 新的绝对文件名

@@ -50,7 +50,7 @@ class DefaultConfig(object):
     # horiba
     # global_step = 562800
     # Nanophoton
-    global_step = 562800
+    global_step = 5200
     # 定义验证数据集的比例
     valid_ratio = 20
     # 定义输入数据名称
