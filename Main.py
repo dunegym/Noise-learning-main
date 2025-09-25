@@ -177,11 +177,20 @@ def train(config):
         epoch_batches = 0
         
         for idx, noise in enumerate(train_loader):
-            noise = np.squeeze(noise.numpy())
-            spectra_num, spec = noise.shape
-            clean_spectra = gen_train.generator(spec, spectra_num)
-            # 转置
-            clean_spectra = clean_spectra.T
+            # 支持两种 DataLoader 返回形式：
+            # 1) 旧版：只返回 noise tensor -> 使用仿真生成器生成 clean_spectra（兼容）
+            # 2) 新版：返回 (noise_tensor, clean_tensor) -> 直接使用来自 .mat 的 clean（cube）
+            if isinstance(noise, (list, tuple)):
+                noise_tensor, clean_tensor = noise
+                noise = np.squeeze(noise_tensor.numpy())
+                clean_spectra = np.squeeze(clean_tensor.numpy())
+            else:
+                noise = np.squeeze(noise.numpy())
+                spectra_num, spec = noise.shape
+                clean_spectra = gen_train.generator(spec, spectra_num)
+                # 转置（generator 返回 shape -> (spec, spectra_num)）
+                clean_spectra = clean_spectra.T
+            # noisy_spectra = clean + noise
             noisy_spectra = clean_spectra + noise
             # 定义输入输出
             input_coef, output_coef = np.zeros(np.shape(noisy_spectra)), np.zeros(np.shape(noise))
@@ -340,6 +349,11 @@ def test(config):
             # s-simulated仿真数据, r-real实际数据
             nums, spec = inpts.shape
             numr, _ = inptr.shape
+            
+            # 保存原始数据用于后续计算去噪结果
+            original_inpts = inpts.copy()
+            original_inptr = inptr.copy()
+            
             # DCT 变换
             for idx in range(nums):
                 inpts[idx, :] = dct(np.squeeze(inpts[idx, :]), norm='ortho')
@@ -353,6 +367,8 @@ def test(config):
                 return (arr / scales[:, None], scales)
             inpts_norm, scales_s = normalize_batch(inpts)
             inptr_norm, scales_r = normalize_batch(inptr)
+            print(f'[DEBUG] File: {file}, Simulated data scales range: [{np.min(scales_s):.6f}, {np.max(scales_s):.6f}], mean: {np.mean(scales_s):.6f}')
+            print(f'[DEBUG] File: {file}, Real data scales range: [{np.min(scales_r):.6f}, {np.max(scales_r):.6f}], mean: {np.mean(scales_r):.6f}')
             # 用归一化后的输入做预测
             inpts, inptr = inpts_norm, inptr_norm
             # 转换为3-D tensor
@@ -376,11 +392,21 @@ def test(config):
             predt = predt.numpy()
             predt = np.squeeze(predt)
             preds, predr = predt[:nums, :], predt[nums:, :]
-            # 反归一化并 IDCT
+            print(f'[DEBUG] File: {file}, Model predictions - Simulated range: [{np.min(preds):.6f}, {np.max(preds):.6f}], Real range: [{np.min(predr):.6f}, {np.max(predr):.6f}]')
+            # 反归一化并IDCT，然后用原始信号减去预测噪声得到去噪结果
             for idx in range(nums):
-                preds[idx, :] = idct(np.squeeze(preds[idx, :] * scales_s[idx]), norm='ortho')
+                noise_pred_s = idct(np.squeeze(preds[idx, :] * scales_s[idx]), norm='ortho')
+                preds[idx, :] = original_inpts[idx, :] - noise_pred_s
             for idx in range(numr):
-                predr[idx, :] = idct(np.squeeze(predr[idx, :] * scales_r[idx]), norm='ortho')
+                noise_pred_r = idct(np.squeeze(predr[idx, :] * scales_r[idx]), norm='ortho')
+                predr[idx, :] = original_inptr[idx, :] - noise_pred_r
+            
+            print(f'[DEBUG] File: {file}, Final results - Simulated data range: [{np.min(preds):.6f}, {np.max(preds):.6f}], Real data range: [{np.min(predr):.6f}, {np.max(predr):.6f}]')
+            # 计算平均相关性（去噪结果与原始含噪声信号的相关性）
+            sim_corrs = [np.corrcoef(original_inpts[idx, :], preds[idx, :])[0, 1] for idx in range(nums)]
+            real_corrs = [np.corrcoef(original_inptr[idx, :], predr[idx, :])[0, 1] for idx in range(numr)]
+            print(f'[DEBUG] File: {file}, Denoised vs Original correlations - Simulated mean: {np.mean(sim_corrs):.6f}, range: [{np.min(sim_corrs):.6f}, {np.max(sim_corrs):.6f}]')
+            print(f'[DEBUG] File: {file}, Denoised vs Original correlations - Real mean: {np.mean(real_corrs):.6f}, range: [{np.min(real_corrs):.6f}, {np.max(real_corrs):.6f}]')
 
             tmp['preds'], tmp['predr'] = preds.T, predr.T
             # 获取存放测试结果目录位置
@@ -441,6 +467,7 @@ def predict(config):
             eps = 1e-8
             scale = max(np.max(np.abs(coe_dct)), eps)
             coe_dct_norm = coe_dct / scale
+            print(f'[DEBUG] File: {file}, DCT scale: {scale:.6f}, DCT coeff range: [{np.min(coe_dct):.6f}, {np.max(coe_dct):.6f}]')
             # 更改shape
             inpt = coe_dct_norm.reshape(1, 1, -1)
              # 转换为torch tensor
@@ -450,10 +477,14 @@ def predict(config):
                 inpt = inpt.cuda()
             yt = model(inpt).detach().cpu().numpy()
             yt = yt.reshape(-1, )
+            print(f'[DEBUG] File: {file}, Model output range: [{np.min(yt):.6f}, {np.max(yt):.6f}], mean: {np.mean(yt):.6f}, std: {np.std(yt):.6f}')
             # 反归一化并 idct 变换
             yt = yt * scale
             noise = idct(yt, norm='ortho')
             Y = x - noise
+            print(f'[DEBUG] File: {file}, Final result - Original range: [{np.min(x):.6f}, {np.max(x):.6f}], Denoised range: [{np.min(Y):.6f}, {np.max(Y):.6f}]')
+            print(f'[DEBUG] File: {file}, Correlation between original and denoised: {np.corrcoef(x, Y)[0,1]:.6f}')
+            print(f'[DEBUG] File: {file}, Noise range: [{np.min(noise):.6f}, {np.max(noise):.6f}]')
             denoised = np.array([wave, Y])
             np.savetxt(new_name, denoised, delimiter='\t')
             i = i + 1
@@ -472,23 +503,53 @@ def load_mat_file(filename):
             return {key: np.array(f[key]) for key in f.keys()}
 
 def amplitude_correction(original, denoised):
-    """校正幅度以匹配原始光谱"""
-    # 计算原始光谱和去噪光谱的幅度范围
+    """更保守的幅度校正策略：
+    - 在去噪幅度非常小或原始幅度为0时跳过校正；
+    - 计算相关性 corr：若 corr < corr_thresh 则仅做均值对齐，不放大量级；
+    - 缩放因子被裁剪到 [min_scale, max_scale]，避免极端放大；
+    - 返回与 original 相同 dtype。
+    """
+    # 参数（可根据需要调整）
+    eps = 1e-8
+    corr_thresh = 0.4     # 相关性阈值，低于此值不执行幅度放大
+    min_scale = 0.8       # 最小允许缩放
+    max_scale = 1.25      # 最大允许缩放
+
+    # 计算幅度
     orig_amplitude = np.max(original) - np.min(original)
     denoised_amplitude = np.max(denoised) - np.min(denoised)
-    
-    # 计算幅度缩放因子
-    amplitude_scale = orig_amplitude / denoised_amplitude if denoised_amplitude != 0 else 1.0
-    
-    # 应用幅度校正
-    corrected = denoised * amplitude_scale
-    
-    # 调整偏移以匹配原始光谱的均值
-    orig_mean = np.mean(original)
-    denoised_mean = np.mean(denoised)
-    corrected = corrected + (orig_mean - np.mean(corrected))
-    
-    return corrected
+
+    # 如果去噪幅度太小或原始幅度为0，跳过幅度校正
+    if denoised_amplitude < eps or orig_amplitude == 0:
+        # 保证返回与输入同类型
+        print(f"[DEBUG][amplitude_correction] skip: tiny amplitude (den={denoised_amplitude:.3e}, orig={orig_amplitude:.3e})")
+        return denoised.astype(original.dtype)
+
+    # 计算相关性（保护性捕获异常）
+    try:
+        corr = np.corrcoef(original.ravel(), denoised.ravel())[0, 1]
+    except Exception:
+        corr = 0.0
+
+    # 计算缩放因子
+    amplitude_scale = orig_amplitude / denoised_amplitude
+
+    # 裁剪缩放因子到保守范围
+    clipped_scale = float(np.clip(amplitude_scale, min_scale, max_scale))
+
+    # 决策：若相关性很低，则不要放大量级（只做均值对齐），同时记录信息
+    if corr < corr_thresh:
+        # 只做均值对齐，不放大
+        corrected = denoised + (np.mean(original) - np.mean(denoised))
+        print(f"[DEBUG][amplitude_correction] low corr={corr:.4f} -> skip scaling, mean-align only. orig_amp={orig_amplitude:.3f}, den_amp={denoised_amplitude:.3f}")
+        return corrected.astype(original.dtype)
+
+    # 否则应用裁剪后的缩放并对齐均值
+    corrected = denoised * clipped_scale
+    corrected = corrected + (np.mean(original) - np.mean(corrected))
+
+    print(f"[DEBUG][amplitude_correction] corr={corr:.4f}, scale_requested={amplitude_scale:.3f}, scale_used={clipped_scale:.3f}")
+    return corrected.astype(original.dtype)
 
 def batch_predict(config):
     print('batch predicting...')
@@ -550,6 +611,8 @@ def batch_predict(config):
                 # 保存尺度因子和归一化数据
                 scales.append(scale)
                 normalized_inputs.append(coe_dct_norm)
+                
+                print(f'[DEBUG] File: {file}, Sample {idx}, DCT scale: {scale:.6f}, DCT coeff range: [{np.min(coe_dct):.6f}, {np.max(coe_dct):.6f}]')
             
             # 转换为3D张量
             normalized_inputs = np.array(normalized_inputs).reshape((nums, 1, spec))
@@ -569,6 +632,7 @@ def batch_predict(config):
             preds = torch.cat(preds, dim=0)
             preds = preds.numpy()
             preds = np.squeeze(preds)
+            print(f'[DEBUG] File: {file}, Model predictions shape: {preds.shape}, range: [{np.min(preds):.6f}, {np.max(preds):.6f}], mean: {np.mean(preds):.6f}, std: {np.std(preds):.6f}')
             
             # 反归一化和IDCT变换
             denoised_spectra = np.zeros_like(original_spectra)
@@ -577,14 +641,25 @@ def batch_predict(config):
                 # 反归一化
                 pred_scaled = preds[idx, :] * scales[idx]
                 
-                # IDCT变换
-                denoised_spectra[idx, :] = idct(np.squeeze(pred_scaled), norm='ortho')
+                # IDCT变换得到预测的噪声
+                noise_pred = idct(np.squeeze(pred_scaled), norm='ortho')
+                
+                # 用原始信号减去预测噪声得到去噪结果
+                denoised_temp = original_spectra[idx, :] - noise_pred
+                
+                # 计算校正前的相关性
+                corr_before = np.corrcoef(original_spectra[idx, :], denoised_temp)[0, 1]
+                print(f'[DEBUG] File: {file}, Sample {idx}, Before amplitude correction - Correlation: {corr_before:.6f}, Denoised range: [{np.min(denoised_temp):.6f}, {np.max(denoised_temp):.6f}]')
                 
                 # 应用幅度校正
                 denoised_spectra[idx, :] = amplitude_correction(
                     original_spectra[idx, :], 
-                    denoised_spectra[idx, :]
+                    denoised_temp
                 )
+                
+                # 计算校正后的相关性
+                corr_after = np.corrcoef(original_spectra[idx, :], denoised_spectra[idx, :])[0, 1]
+                print(f'[DEBUG] File: {file}, Sample {idx}, After amplitude correction - Correlation: {corr_after:.6f}, Final range: [{np.min(denoised_spectra[idx, :]):.6f}, {np.max(denoised_spectra[idx, :]):.6f}]')
             
             tmp['preds'] = denoised_spectra.T
             # 获取存放测试结果目录位置
